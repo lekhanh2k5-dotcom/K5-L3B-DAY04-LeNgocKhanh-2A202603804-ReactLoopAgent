@@ -1,4 +1,5 @@
 """Bài 4: agent nhắc model chốt câu trả lời khi sắp hết max_steps (lỗi A5 trong eval_before)."""
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -37,6 +38,28 @@ class BudgetWarningTests(unittest.TestCase):
         result = run_agent('x', fake, StatusTools(), max_steps=6)
         self.assertFalse(any(x['event'] == 'budget_warning' for x in result['trace']))
         self.assertEqual(fake.histories[1][-1]['role'], 'tool')
+
+
+class FailureNoteTests(unittest.TestCase):
+    """H7: tool lỗi phải được đánh dấu là chưa kiểm tra, không phải trạng thái dịch vụ."""
+    def run_one(self, tools, name, arguments):
+        fake = FakeProvider([tool_call('1', name, arguments), final()])
+        run_agent('x', fake, tools)
+        return json.loads(fake.histories[1][-1]['content'])
+
+    def test_timeout_gets_unverified_note(self):
+        result = self.run_one(StatusTools(fail=True), 'get_status', '{"provider":"cloudflare"}')
+        self.assertEqual(result['error'], 'TimeoutError')
+        self.assertIn('cloudflare CHƯA được kiểm tra', result['agent_note'])
+
+    def test_caller_errors_and_not_found_have_no_note(self):
+        for name, arguments in [('get_status', '{'), ('missing', '{}'),
+                                ('get_incident_details', '{"provider":"github","incident_id":"missing"}')]:
+            with self.subTest(name=name, arguments=arguments):
+                self.assertNotIn('agent_note', self.run_one(StatusTools(), name, arguments))
+
+    def test_success_has_no_note(self):
+        self.assertNotIn('agent_note', self.run_one(StatusTools(), 'get_status', '{"provider":"github"}'))
 
 
 if __name__ == '__main__':

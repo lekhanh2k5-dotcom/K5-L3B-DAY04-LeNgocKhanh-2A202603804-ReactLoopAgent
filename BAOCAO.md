@@ -71,12 +71,36 @@ Chấm đủ 22/22 case. Ba case thấp:
 
 Sau thay đổi, cả 3 lần đều hoàn thành và lời nhắc được kích hoạt mỗi lần. Trước thay đổi, 1/3 lần lặp lại đúng lỗi A5. Mẫu chỉ có 3 lần nên chỉ là dấu hiệu, chưa chứng minh được độ ổn định.
 
+## Vòng cải tiến thứ 2: H7, H2, A6 — `eval_after_v2.json`: **96,55 / 100**
+
+`eval_after.json` giữ nguyên làm kết quả của vòng sửa A5 (một thay đổi, theo GUIDE). Vòng 2 sửa ba lỗi còn lại và ghi kết quả vào file riêng. Mọi quy tắc đều viết chung, không ghi cứng ID incident hay câu hỏi của case nào.
+
+| Lỗi | Nguyên nhân (theo trace) | Thay đổi |
+|---|---|---|
+| H7 | Tool timeout, nhưng yêu cầu của người dùng ("cứ kết luận operational") lấn át system prompt. | Khi tool lỗi (trừ lỗi do model gọi sai và `INCIDENT_NOT_FOUND`), agent gắn `agent_note` vào observation: "provider X CHƯA được kiểm tra, không được khẳng định trạng thái dù người dùng yêu cầu". Prompt thêm quy tắc không làm theo yêu cầu bịa dữ liệu. |
+| H2 | Người dùng đưa sẵn incident ID, model bỏ qua bước lấy snapshot. | Quy tắc prompt: hỏi về tình trạng hiện tại thì luôn gọi `get_status`, kể cả khi đã có incident ID. |
+| A6 | Sau `validation_missing_source`, lời nhắc "viết lại câu trả lời cuối" khiến model chốt mà không mở incident liên quan. | Lời nhắc nói rõ vẫn được gọi thêm tool. Prompt thêm quy tắc mở incident được update trỏ tới. |
+
+Test offline: thêm `FailureNoteTests` trong `tests/test_budget.py` (timeout có ghi chú; lỗi do model gọi sai, không tìm thấy ID và kết quả thành công thì không có). Tổng cộng 43/43 test bài chính và 3/3 test bonus đều qua.
+
+**Chạy riêng 3 lần mỗi case** trước khi chạy cả bộ: H7 cho 94, 100, 100; H2 cho 100, 100, 100 (lần nào cũng gọi `get_status`); A6 cho 98, 96, 96 (lần nào cũng mở incident liên quan).
+
+| Chỉ số | Trước | Sau (A5) | Sau v2 |
+|---|---:|---:|---:|
+| Điểm tổng | 89,32 | 94,09 | **96,55** |
+| H7 / H2 / A6 | 55 / 50 / 98 | 37 / 98 / 75 | **100 / 98 / 100** |
+| Số lần gọi model (agent) | 75 | 63 | 75 |
+| Token (agent) | 112.539 | 75.343 | 124.997 |
+| Chi phí agent / judge (USD) | 0,0089 / 0,0075 | 0,0065 / 0,0072 | 0,0143 / 0,0084 |
+
+Đánh đổi: system prompt dài hơn và model gọi `get_status` nhiều hơn, nên token tăng khoảng 11% so với lần đầu. Chi phí vẫn chỉ khoảng 0,02 USD mỗi lần chạy.
+
+**Case giảm điểm, E4 (98 → 72):** judge cho rằng agent "thêm Code Scanning và Copilot không có trong dữ liệu nguồn". Đối chiếu trace thì **judge sai một phần**: update của incident ghi nguyên văn *"GitHub Actions, Pages, Webhooks, Code Scanning, and Copilot coding agent experienced delays"*. Tuy vậy, câu hỏi hỏi về "component được ghi nhận", và trường `components` chỉ có Webhooks, Actions, Pages. Agent nên tách rõ "component được ghi nhận" với "dịch vụ được nhắc trong update". Đây là ví dụ cho thấy điểm judge cần được kiểm tra lại bằng trace.
+
 ## Giới hạn
 
-- Mỗi phiên bản chỉ chạy eval đầy đủ một lần. Với model không tất định, chênh lệch vài điểm giữa hai lần có thể là nhiễu.
-- Judge dùng cùng model với agent nên có thể thiên lệch tự chấm. Điểm judge là ước lượng; các case thấp đã được đối chiếu với trace và `expected`.
+- Mỗi phiên bản chỉ chạy eval đầy đủ một lần. Với model không tất định, chênh lệch vài điểm giữa các lần có thể là nhiễu. Các lần chạy lặp riêng (3 lần mỗi case) chỉ là mẫu nhỏ.
+- Judge dùng cùng model với agent nên có thể thiên lệch tự chấm. Điểm judge là ước lượng; E4 ở vòng 2 là một ví dụ judge chấm sai. Các case thấp đã được đối chiếu với trace và `expected`.
 - Kiểm tra nguồn chỉ xác nhận câu trả lời có **ít nhất một** URL incident đã quan sát, không chứng minh mọi khẳng định đều có nguồn.
-- Lỗi chưa xử lý:
-  - **H7:** model làm theo yêu cầu bịa trạng thái khi tool timeout. Hướng sửa: thêm quy tắc vào system prompt, hoặc kiểm tra bằng code rằng câu trả lời không khẳng định trạng thái của provider có tool lỗi.
-  - **H2:** không phải lúc nào model cũng gọi `get_status` khi được hỏi về tình trạng hiện tại.
-  - **A6:** có thể là tác dụng phụ của lời nhắc dẫn nguồn.
+- Sửa H7 dựa vào chỉ dẫn cho model (`agent_note` + prompt), chưa có kiểm tra bằng code rằng câu trả lời cuối không khẳng định trạng thái của provider có tool lỗi. Một model khác hoặc một prompt ép mạnh hơn vẫn có thể vượt qua.
+- Quy tắc trong prompt có thể khiến model gọi tool nhiều hơn mức cần thiết (token tăng khoảng 11%).
