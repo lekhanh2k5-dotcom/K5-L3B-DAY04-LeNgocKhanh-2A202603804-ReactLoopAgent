@@ -105,7 +105,9 @@ Test offline: thêm `FailureNoteTests` trong `tests/test_budget.py` (timeout có
 - Sửa H7 dựa vào chỉ dẫn cho model (`agent_note` + prompt), chưa có kiểm tra bằng code rằng câu trả lời cuối không khẳng định trạng thái của provider có tool lỗi. Một model khác hoặc một prompt ép mạnh hơn vẫn có thể vượt qua.
 - Quy tắc trong prompt có thể khiến model gọi tool nhiều hơn mức cần thiết (token tăng khoảng 11%).
 
-## Bonus — `eval_bonus.json`: **97,4 / 100 → 14,61 / 15 điểm**
+## Bonus — `eval_bonus_v1.json`: **97,4 / 100 → 14,61 / 15 điểm**
+
+Bản chạy lại với `agent.py` cuối cùng nằm ở `eval_bonus.json` (97,8 → 14,67/15); xem vòng cải tiến thứ 4. Phần dưới mô tả lần chạy đầu.
 
 Cùng cấu hình: OpenRouter `openai/gpt-oss-120b` làm agent và judge, `max_steps` 16, snapshot, `--workers 4`. Đủ 10/10 case được chấm.
 
@@ -194,3 +196,48 @@ Chi phí phần bổ sung: 6 lần chạy agent + judge thêm khoảng 0,12 USD,
 **Thiếu sót mới thấy ở A1 (84 điểm):** câu trả lời đã đúng về số lượng ("23 incident khớp, còn 18 chưa xem"), nhưng agent mở 4 incident GitHub mà **không mở incident Cloudflare**, nên thiếu URL Cloudflare dù câu hỏi yêu cầu URL cho cả hai. Kiểm tra nguồn hiện chỉ đòi *ít nhất một* URL, nên không bắt được lỗi này. Hướng sửa tiếp: kiểm tra nguồn theo từng nhà cung cấp được hỏi. Chưa thể kết luận ghi chú mới có góp phần gây ra lỗi này (khiến model mở thêm incident GitHub) hay không.
 
 Chi phí vòng này: khoảng 0,03 USD.
+
+## Vòng cải tiến thứ 4: thiếu URL theo nhà cung cấp (A1) và tham số null (H2) — `eval_after_v4.json`: **97,95 / 100**
+
+**Lỗi (A1 ở v3, 84 điểm):** agent mở 4 incident GitHub, mỗi lượt một incident. Đến lượt 7 thì `budget_warning` bật, nên không còn lượt để mở incident Cloudflare và câu trả lời thiếu URL Cloudflare. Kiểm tra nguồn cũ chỉ đòi *ít nhất một* URL nên không bắt được.
+
+**Hai cách thử không hiệu quả** (file trong `stability/a1_round4/`, đều là A1 chạy 3 lần):
+
+| Lần thử | Cách làm | Kết quả |
+|---|---|---|
+| 1 | Gắn `agent_note` vào kết quả `get_incident_details`: "chưa mở incident của provider khác đã tìm thấy kết quả" | 52, 81, 50; 0/3 có URL Cloudflare. Model tìm Cloudflare quá muộn (lượt 6) hoặc không tìm, nên ghi chú không bật. |
+| 2 | Thêm ghi chú khi provider được nhắc tên trong câu hỏi mà chưa được gọi tool | 52, 78, 86; 0/3 có URL Cloudflare. Nhật ký cho thấy ghi chú có trong mọi tool result, nhưng model vẫn mở tiếp incident GitHub theo kế hoạch đã lập từ bước 1. |
+
+Bài học: ghi chú nằm lẫn trong tool result không đủ để model đổi kế hoạch. Lời nhắc riêng dạng message `user` (giống `budget_warning`) thì model làm theo đều đặn.
+
+**Thay đổi cuối cùng trong `agent.py`:**
+- Agent theo dõi provider còn thiếu nguồn: provider được nhắc tên trong câu hỏi (lấy từ schemas, chỉ khi câu hỏi nhắc ≥ 2 provider) mà chưa có tool call nào, hoặc provider đã tìm theo component có kết quả nhưng chưa mở incident nào trong khi provider khác đã có URL. Các call song song trong cùng một lượt đều được tính là đã kiểm tra.
+- Khi còn ≤ 4 lượt mà vẫn còn provider thiếu nguồn, agent gửi `coverage_warning`: dùng lượt tới để mở incident của provider đó, không đọc thêm incident của provider đã có nguồn. Lượt chốt và lượt dự phòng cho kiểm tra nguồn vẫn được giữ.
+- `budget_warning` nêu tên provider chưa có incident được mở, để model nói rõ là thiếu URL thay vì bỏ qua.
+- Kiểm tra nguồn theo từng provider: mỗi provider đã đọc incident phải có ít nhất một URL của nó. Trace ghi thêm `missing_providers`.
+- Prompt thêm quy tắc: câu hỏi nhiều dịch vụ thì mở incident liên quan nhất của mỗi dịch vụ trước, có thể gọi nhiều tool trong một lượt.
+
+**Kết quả A1 chạy 3 lần:** 78, 94, 95; **3/3 có URL Cloudflare** (hai cách thử trước là 0/6). `coverage_warning` bật cả 3 lần ở lượt 5, và model mở incident Cloudflare ngay sau đó. Lần 78 điểm bị trừ vì sót một incident GitHub, là lỗi khác.
+
+**Lỗi H2 lộ ra khi chạy đủ bộ** (lần chạy trước khi sửa: 96,18, file `stability/a1_round4/eval_after_v4_pre_nullfix.json`): model gửi `component: null`, tool cho sẵn lỗi `AttributeError`, agent gắn ghi chú "github chưa kiểm tra được" nên model không thử lại (97 → 77). Đây là lỗi có từ trước, không do thay đổi vòng này gây ra. Sửa: `_run_tool` bỏ các tham số có giá trị `null` trước khi gọi tool, vì null với tham số tùy chọn nghĩa là không truyền. Ba case khác giảm trong lần chạy đó (E5, A3, H3) có lý do judge tích cực hoặc không liên quan đến thay đổi.
+
+**Test offline:** thêm `ProviderCoverageTests` (7 test: cảnh báo khi provider đã tìm mà chưa mở incident, cảnh báo khi provider được hỏi mà chưa gọi tool, không cảnh báo với câu hỏi một provider, call song song được tính là đã kiểm tra, `get_status` không có component không tính là tìm kiếm, kiểm tra nguồn theo từng provider, budget warning nêu provider thiếu) và `test_null_optional_argument_is_dropped`. Tổng cộng 62/62 test bài chính và 3/3 test bonus đều qua.
+
+**Chạy lại đủ bộ với code cuối:**
+
+| Chỉ số | v3 | v4 |
+|---|---:|---:|
+| Điểm bộ chính | 97,32 | **97,95** |
+| A1 / H2 | 84 / 97 | 94 / 100 |
+| Số lần gọi model (agent) | 73 | 69 |
+| Token (agent) | 121.393 | 110.552 |
+| Chi phí agent / judge (USD) | 0,0120 / 0,0093 | 0,0097 / 0,0062 |
+| Bonus | 97,4 (14,61/15) | **97,8 (14,67/15)**, 10/10 case được chấm |
+
+Lưu ý trung thực: trong lần chạy đầy đủ v4, A1 tự mở incident Cloudflare mà không cần `coverage_warning`. Bằng chứng cho cơ chế mới là 3 lần chạy riêng A1 và test offline, không phải điểm A1 trong `eval_after_v4.json`. Các case dao động ±5 điểm khác (E4, A5, A7, H5, H8) không có event mới nào bật, nên coi là dao động của model và judge.
+
+**Giới hạn:**
+- Nhận diện provider được hỏi bằng cách tìm tên trong câu hỏi. Câu hỏi gọi dịch vụ bằng tên khác (ví dụ "CF") sẽ không được nhận ra; câu hỏi nhắc tên chỉ để loại trừ có thể khiến agent kiểm tra thừa.
+- `coverage_warning` chỉ là lời nhắc; model vẫn có thể bỏ qua. Kiểm tra nguồn theo provider chỉ áp dụng cho provider đã mở incident.
+
+Chi phí vòng này: khoảng 0,05 USD.
