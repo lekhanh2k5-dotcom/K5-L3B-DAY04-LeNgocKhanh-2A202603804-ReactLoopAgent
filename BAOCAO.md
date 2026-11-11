@@ -177,3 +177,20 @@ Có 2 case bị `unscored` vì judge trả JSON không hợp lệ (A2 ở v2 l�
   - Vì vậy cần đối chiếu trace cho các case thấp hoặc khi hai judge chấm lệch nhau, không tin một judge nào tuyệt đối.
 
 Chi phí phần bổ sung: 6 lần chạy agent + judge thêm khoảng 0,12 USD, chấm lại bằng gemini khoảng 0,19 USD.
+
+## Vòng cải tiến thứ 3: A1 — `eval_after_v3.json`: **97,32 / 100**
+
+**Lỗi (tìm thấy trong phân tích độ ổn định, v2 lần 3):** agent viết *"No other Actions-related incidents appear in the last 50"* trong khi `get_status` trả `matching_incidents_in_last_50: 23` và chỉ hiển thị 5. Đây là khẳng định quá mức từ một danh sách tìm kiếm chưa đầy đủ. Judge gpt-oss bắt được lỗi này (61 điểm), gemini thì không (100).
+
+**Thay đổi:** khi status result có số khớp (`matching_incidents_in_last_50` hoặc `match_count` ở bonus) lớn hơn số incident được hiển thị, agent gắn `agent_note`: "Chỉ hiển thị 5/23 incident khớp; không được nói là không có incident khác; nêu rõ còn 18 chưa hiển thị". Prompt bài chính và `EXTRA_RULES` của bonus có thêm quy tắc tương ứng. Cách làm dựa trên dữ liệu tool, không ghi cứng ID hay câu hỏi của A1.
+
+**Test offline:** thêm `PartialListTests` (danh sách thiếu thì có ghi chú, danh sách đủ thì không, hỗ trợ `match_count` của bonus). Test `test_success_has_no_note` cũ được đổi thành `test_success_has_no_failure_note`, vì kết quả thành công giờ có thể mang ghi chú "danh sách chưa đủ"; ý định ban đầu của test là kết quả thành công không bị gắn ghi chú *lỗi*. Tổng cộng 54/54 test bài chính và 3/3 test bonus đều qua.
+
+**Kết quả:**
+- Chạy riêng A1 3 lần: 95, 91, 97. Cả 3 lần không còn câu khẳng định "không có incident khác" và đều nêu số incident khớp.
+- Chạy đủ 22 case: **97,32** (v2: 96,38 ± 0,58 qua 3 lần). Ba case E1, A6, H5 thấp hơn mức thấp nhất của v2 khoảng 1–6 điểm, nhưng lý do judge đưa ra đều tích cực; có vẻ là dao động của judge chứ không phải lỗi mới.
+- Lỗi cũ chỉ xuất hiện 1/9 lần chạy, nên eval khó chứng minh lỗi đã hết. Bằng chứng chính cho cơ chế này là test offline, còn eval để xác nhận không làm hỏng case khác.
+
+**Thiếu sót mới thấy ở A1 (84 điểm):** câu trả lời đã đúng về số lượng ("23 incident khớp, còn 18 chưa xem"), nhưng agent mở 4 incident GitHub mà **không mở incident Cloudflare**, nên thiếu URL Cloudflare dù câu hỏi yêu cầu URL cho cả hai. Kiểm tra nguồn hiện chỉ đòi *ít nhất một* URL, nên không bắt được lỗi này. Hướng sửa tiếp: kiểm tra nguồn theo từng nhà cung cấp được hỏi. Chưa thể kết luận ghi chú mới có góp phần gây ra lỗi này (khiến model mở thêm incident GitHub) hay không.
+
+Chi phí vòng này: khoảng 0,03 USD.

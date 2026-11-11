@@ -58,8 +58,35 @@ class FailureNoteTests(unittest.TestCase):
             with self.subTest(name=name, arguments=arguments):
                 self.assertNotIn('agent_note', self.run_one(StatusTools(), name, arguments))
 
-    def test_success_has_no_note(self):
-        self.assertNotIn('agent_note', self.run_one(StatusTools(), 'get_status', '{"provider":"github"}'))
+    def test_success_has_no_failure_note(self):
+        result = self.run_one(StatusTools(), 'get_status', '{"provider":"github"}')
+        self.assertNotIn('CHƯA được kiểm tra', result.get('agent_note', ''))
+
+
+class PartialListTests(unittest.TestCase):
+    """A1: get_status chỉ trả 5 trong số nhiều incident khớp; model phải được báo là danh sách chưa đủ."""
+    def first_result(self, tools, name, arguments):
+        fake = FakeProvider([tool_call('1', name, arguments), final()])
+        run_agent('x', fake, tools)
+        return json.loads(fake.histories[1][-1]['content'])
+
+    def test_partial_incident_list_gets_note(self):
+        result = self.first_result(StatusTools(), 'get_status', '{"provider":"github","component":"Actions"}')
+        total, shown = result['matching_incidents_in_last_50'], len(result['incidents'])
+        self.assertGreater(total, shown)
+        self.assertIn(f'{shown}/{total}', result['agent_note'])
+        self.assertIn('Không được nói là không có incident khác', result['agent_note'])
+
+    def test_complete_list_has_no_note(self):
+        result = self.first_result(StatusTools(), 'get_status', '{"provider":"cloudflare","component":"Spectrum"}')
+        self.assertEqual(result['matching_incidents_in_last_50'], len(result['incidents']))
+        self.assertNotIn('agent_note', result)
+
+    def test_bonus_match_count_supported(self):
+        from bonus.tools import BonusTools
+        result = self.first_result(BonusTools(), 'get_github_status', '{}')
+        if result['match_count'] > len(result['incidents']):
+            self.assertIn('agent_note', result)
 
 
 if __name__ == '__main__':
