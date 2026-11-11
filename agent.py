@@ -15,6 +15,12 @@ TRACE_RESULT_LIMIT = 4000
 SOURCE_REMINDER = ('Câu trả lời chưa dẫn URL nguồn của incident đã đọc. Hãy viết lại câu trả lời cuối, '
                    'giữ nguyên nội dung đúng và dẫn ít nhất một URL incident lấy từ tool result: {urls}')
 
+# Còn từng này lượt gọi model (tính cả lượt sắp gọi) thì yêu cầu model chốt câu trả lời.
+# 2 = một lượt để trả lời + một lượt dự phòng nếu kiểm tra nguồn yêu cầu sửa.
+BUDGET_WARNING_AT = 2
+BUDGET_REMINDER = ('Chỉ còn {left} lượt gọi model. Đừng gọi thêm tool. Hãy viết câu trả lời cuối ngay '
+                   'từ dữ liệu đã có, nêu rõ phần chưa kiểm tra được{sources}.')
+
 
 def _preview(result):
     text = json.dumps(result, ensure_ascii=False, default=str)
@@ -55,6 +61,13 @@ def run_agent(question, provider, tools, max_steps=6):
         return out
 
     for step in range(1, max_steps + 1):
+        left = max_steps - step + 1
+        # Model còn đang điều tra (lượt trước là tool results) mà sắp hết lượt: yêu cầu chốt
+        # câu trả lời, để không bị dừng max_steps với một câu trả lời đã gần xong.
+        if left <= BUDGET_WARNING_AT and messages[-1].get('role') == 'tool':
+            sources = f' và dẫn URL incident đã đọc: {", ".join(observed_urls)}' if observed_urls else ''
+            messages.append({'role': 'user', 'content': BUDGET_REMINDER.format(left=left, sources=sources)})
+            trace.append({'event': 'budget_warning', 'step': step, 'steps_left': left})
         try:
             response = provider.complete(messages, schemas)
         except Exception as exc:
