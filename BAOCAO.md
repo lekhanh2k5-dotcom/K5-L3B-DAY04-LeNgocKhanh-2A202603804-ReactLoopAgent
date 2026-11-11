@@ -145,3 +145,35 @@ Chi phí bonus: agent 0,0055 USD, judge 0,0064 USD.
 - 429 và lỗi định dạng trong eval là giả lập với `retry_after_seconds = 0`, nên phần chờ theo Retry-After chỉ được kiểm tra bằng test offline, chưa thử với API thật.
 - Cắt danh sách ở 20 mục là ngưỡng chung. Nếu bằng chứng cần thiết nằm sau mục thứ 20 thì sẽ bị mất (ghi chú `_omitted_by_agent` cho model biết là có dữ liệu bị cắt).
 - B5 cho thấy model chưa luôn mô tả lại quá trình xử lý lỗi khi câu hỏi yêu cầu.
+
+## Độ ổn định và thiên lệch judge (phân tích bổ sung)
+
+Kết luận ở trên dựa trên mỗi phiên bản một lần chạy. Để kiểm tra, mỗi phiên bản agent được chạy **3 lần** trên bộ core (cùng model, snapshot, `max_steps` 8), mỗi phiên bản checkout đúng commit của nó: trước khi sửa = `130be2e`, sửa A5 = `cf4cae6`, v2 = `a821565`. Sau đó cả 9 lần chạy được **chấm lại bằng judge thứ hai** (`google/gemini-2.5-flash`) bằng `analysis/rejudge.py`. Script dùng đúng `grade_case` của lab: câu trả lời agent giữ nguyên, chỉ đổi judge. Tất cả file nằm trong `stability/` (lần 1 là bản sao của `eval_before/after/after_v2.json`).
+
+| Phiên bản | Judge gpt-oss-120b (3 lần) | TB ± độ lệch | Judge gemini-2.5-flash | TB ± độ lệch |
+|---|---|---:|---|---:|
+| Trước khi sửa | 89,32 · 92,23 · 91,05 | 90,87 ± 1,46 | 92,09 · 94,45 · 93,59 | 93,38 ± 1,19 |
+| Sửa A5 | 94,09 · 95,41 · 91,27 | 93,59 ± 2,11 | 97,41 · 97,45 · 94,59 | 96,48 ± 1,64 |
+| v2 | 96,55 · 96,86 · 95,73 | **96,38 ± 0,58** | 99,18 · 99,64 · 99,50 | **99,44 ± 0,24** |
+
+Có 2 case bị `unscored` vì judge trả JSON không hợp lệ (A2 ở v2 lần 2 với gpt-oss, A1 ở trước khi sửa lần 2 với gemini). Theo GUIDE, hai case này được chấm lại bằng **đúng judge đó**, không tính 0 điểm; trường `grade.note` trong file ghi lại việc này.
+
+### Nhận xét
+
+- **Thứ tự trước < A5 < v2 giữ nguyên với cả hai judge và cả 3 lần chạy.** Gemini chấm cao hơn khoảng 2–3 điểm nhưng không đảo thứ tự. Khoảng cách v2 so với trước khi sửa (khoảng 5,5–6 điểm) lớn hơn nhiều so với độ lệch giữa các lần chạy (khoảng 0,6–2 điểm). Với 3 mẫu thì đây vẫn chỉ là bằng chứng sơ bộ.
+- **v2 ổn định hơn rõ rệt** (độ lệch 0,58 so với 1,46–2,11): các quy tắc mới loại bỏ những lần model "lúc làm lúc không".
+- **Các lỗi được sửa có tính hệ thống, không phải may mắn** (điểm theo từng lần chạy, judge gpt-oss):
+
+| Case | Trước khi sửa | Sửa A5 | v2 | Nhận xét |
+|---|---|---|---|---|
+| H2 | 50 · 50 · 50 | 98 · 100 · 50 | 98 · 99 · 96 | Trước khi sửa thì cả 3 lần đều bỏ `get_status`. Quy tắc "luôn lấy snapshot" sửa được cả 3 lần. |
+| H7 | 55 · 40 · 50 | 37 · 96 · 55 | 100 · 100 · 100 | Gemini cũng cho 100 · 98 · 100 ở v2. |
+| H6 | 96 · 100 · 50 | 95 · 50 · 50 | 98 · 93 · 95 | Không phải case được chọn để sửa, nhưng các lần 50 điểm có cùng lỗi với H2 (bỏ `get_status`, chỉ gọi tool ở 1 step). Quy tắc chung của v2 sửa luôn: dấu hiệu cho thấy quy tắc khái quát được, không chỉ vá một case. |
+| A5 | **0** · 93 · 97 | 95 · 97 · 100 | 92 · 97 · 86 | Lỗi `max_steps` xuất hiện 1/3 lần trước khi sửa và 0/6 lần sau khi sửa. |
+
+- **Hai judge bất đồng, và mỗi bên đều có lúc sai:**
+  - E4 (v2 lần 1): gpt-oss cho 72, gemini cho 100. Gemini đúng: dịch vụ mà gpt-oss gọi là "bịa" thực ra có trong update.
+  - A1 (v2 lần 3): gpt-oss cho 61, gemini cho 100. **gpt-oss đúng**: agent viết *"No other Actions-related incidents appear in the last 50"* trong khi tool trả `matching_incidents_in_last_50: 23`. Đây là lỗi thật của agent (khẳng định quá mức từ kết quả tìm kiếm) mà gemini bỏ sót, và vẫn còn tồn tại ở v2.
+  - Vì vậy cần đối chiếu trace cho các case thấp hoặc khi hai judge chấm lệch nhau, không tin một judge nào tuyệt đối.
+
+Chi phí phần bổ sung: 6 lần chạy agent + judge thêm khoảng 0,12 USD, chấm lại bằng gemini khoảng 0,19 USD.
