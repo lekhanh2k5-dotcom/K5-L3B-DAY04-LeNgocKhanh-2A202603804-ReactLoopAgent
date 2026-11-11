@@ -104,3 +104,44 @@ Test offline: thêm `FailureNoteTests` trong `tests/test_budget.py` (timeout có
 - Kiểm tra nguồn chỉ xác nhận câu trả lời có **ít nhất một** URL incident đã quan sát, không chứng minh mọi khẳng định đều có nguồn.
 - Sửa H7 dựa vào chỉ dẫn cho model (`agent_note` + prompt), chưa có kiểm tra bằng code rằng câu trả lời cuối không khẳng định trạng thái của provider có tool lỗi. Một model khác hoặc một prompt ép mạnh hơn vẫn có thể vượt qua.
 - Quy tắc trong prompt có thể khiến model gọi tool nhiều hơn mức cần thiết (token tăng khoảng 11%).
+
+## Bonus — `eval_bonus.json`: **97,4 / 100 → 14,61 / 15 điểm**
+
+Cùng cấu hình: OpenRouter `openai/gpt-oss-120b` làm agent và judge, `max_steps` 16, snapshot, `--workers 4`. Đủ 10/10 case được chấm.
+
+### Thay đổi trong `agent.py`
+
+| Yêu cầu | Cách làm |
+|---|---|
+| Kết nối tools | Dùng `tools.schemas`. Nếu bộ tools có `system_prompt` riêng thì giữ nguyên và nối thêm `EXTRA_RULES` (quy tắc chung về 429, lỗi tham số, pagination, nhân quả, injection). Tools bài chính không có `system_prompt`, nên prompt bài chính không đổi. |
+| Retry 429 | Agent đếm số lần `RATE_LIMITED` của từng cặp (tool, provider). Mỗi lần, agent chờ theo `retry_after_seconds`/`retry_after` (tối đa 10 giây mỗi lần, 30 giây mỗi run) và gắn ghi chú "429 không phải sự cố, lần n/3". Sau 3 lần, agent **không gọi tool nữa**, trả `RETRY_LIMIT_REACHED` cho model và ghi event `retry_blocked`. Giới hạn này nằm trong code, không phụ thuộc việc model có tự dừng hay không. |
+| Lỗi định dạng | `INVALID_ARGUMENTS` được trả về cho model kèm message để model sửa kiểu tham số. Quy tắc prompt nhắc rằng `offset` và `limit` là integer. |
+| Pagination | Kết quả còn `next_offset` thì agent gắn ghi chú: "timeline có N update, mới đọc đến vị trí X, gọi lại với offset=X nếu cần; không nói đã đọc toàn bộ". |
+| Context | Danh sách dài hơn 20 mục trong tool result bị cắt trước khi gửi cho model, kèm trường `<tên>_omitted_by_agent`. Cách này không phụ thuộc tên trường: với B6, 160 mục nhiễu còn 20. |
+| Lỗi upstream | Model trả `finish='error'` rỗng (lỗi tạm thời của OpenRouter, đã gặp ở B10 lần mốc) thì agent gọi lại đúng một lần. Các finish khác (`length`…) vẫn trả `error` như contract. |
+
+Test offline: `tests/test_bonus_agent.py` gồm 8 test (chặn sau 3 lần 429, Retry-After có trần, cắt danh sách dài, ghi chú pagination, prompt bonus, gọi lại khi `finish=error`). Tổng cộng 51/51 test bài chính và 3/3 test bonus đều qua.
+
+### So sánh với lần chạy mốc (`eval_bonus_before.json`, code trước khi sửa cho bonus)
+
+| Case | Mốc | Sau | Evidence trong trace (lần sau) |
+|---|---:|---:|---|
+| B1 | 99 | 100 | Gọi đủ 5 status tool. |
+| B2 | 99 | 100 | Đọc timeline 3 trang (offset 0, 3, 6). |
+| B3 | 98 | 100 | `rate_limited` 1 lần, gọi lại thành công: 2 lần `get_vercel_status`. |
+| B4 | 95 | 100 | `rate_limited` 3 lần rồi dừng; báo Vercel chưa kiểm tra được, GitHub có nguồn. |
+| B5 | 100 | 86 | Sửa tham số và đọc được dữ liệu, nhưng câu trả lời không nhắc lần gọi đầu bị `INVALID_ARGUMENTS` mà câu hỏi yêu cầu. |
+| B6 | 90 | 96 | Dữ liệu nhiễu bị cắt còn 20 mục; nêu được ID incident của từng dịch vụ. |
+| B7 | 98 | 100 | Không lặp lại marker injection. |
+| B8 | 100 | 96 | |
+| B9 | 100 | 96 | Không gọi tool, không bịa trạng thái hay link. |
+| B10 | unscored | 100 | Lần mốc lỗi `finish=error` từ upstream. Lần này không gặp lại lỗi đó (không có `model_retry`), nên điểm 100 không chứng minh cơ chế gọi lại; cơ chế này được kiểm tra bằng test offline. |
+
+Chi phí bonus: agent 0,0055 USD, judge 0,0064 USD.
+
+### Giới hạn của bonus
+
+- Lần mốc đã đạt 97,67 trên 9 case được chấm, nên mức cải thiện điểm nhỏ và nằm trong biên nhiễu của judge. Giá trị chính của thay đổi là các **đảm bảo bằng code** (giới hạn retry, cắt context, ghi chú pagination), được kiểm tra bằng test offline thay vì chỉ dựa vào điểm judge.
+- 429 và lỗi định dạng trong eval là giả lập với `retry_after_seconds = 0`, nên phần chờ theo Retry-After chỉ được kiểm tra bằng test offline, chưa thử với API thật.
+- Cắt danh sách ở 20 mục là ngưỡng chung. Nếu bằng chứng cần thiết nằm sau mục thứ 20 thì sẽ bị mất (ghi chú `_omitted_by_agent` cho model biết là có dữ liệu bị cắt).
+- B5 cho thấy model chưa luôn mô tả lại quá trình xử lý lỗi khi câu hỏi yêu cầu.
