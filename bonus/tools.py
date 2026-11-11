@@ -45,7 +45,7 @@ class BonusTools:
             return self.cache[provider]
         if self.mode == 'snapshot':
             path = ROOT / ('fixtures' if provider in ('github','cloudflare') else 'bonus/fixtures') / f'{provider}.json'
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding='utf-8'))
         else:
             data = {'captured_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'data': {}}
             for ep in ('summary','incidents'):

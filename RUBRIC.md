@@ -10,12 +10,22 @@ LLM judge là một phép đánh giá xấp xỉ, có thể nhầm hoặc thiên
 
 ## Chấm bài chính: 85 điểm
 
-| Nội dung | Điểm | Tiêu chí |
-|---|---:|---|
-| Agent loop | 30 | Gọi model và tool; lưu assistant message, trả đúng tool-call IDs; xử lý nhiều calls và dừng đúng. |
-| Robustness và trace | 15 | `max_steps`, invalid JSON, tool error, model dừng bất thường; trace đủ để debug. |
-| Eval và phân tích | 20 | Chạy hai lần, đọc case và trace, xác định lỗi, giải thích bằng evidence và nêu giới hạn của điểm judge. |
-| Cải tiến và trình bày | 20 | Có cải tiến phù hợp, validation nguồn, tests, so sánh kết quả và giải thích lỗi còn lại. |
+**Bài cá nhân**, chấm trên repo của từng học viên.
+
+### Phần bắt buộc
+
+| Nội dung | Điểm | Tiêu chí | Bằng chứng | Điều kiện mất điểm |
+|---|---:|---|---|---|
+| Agent loop | 30 | Gọi model và tool; lưu assistant message, trả đúng tool-call IDs; xử lý nhiều calls và dừng đúng. | `agent.py`, unit tests | Dùng framework; thiếu `tool_call_id`; bỏ sót tool call |
+| Robustness và trace | 15 | `max_steps`, invalid JSON, tool error, model dừng bất thường; trace đủ để debug. | `agent.py`, trace trong file eval | Crash khi tool lỗi; báo `completed` khi output bị cắt; trace thiếu `event` |
+| Eval và phân tích | 20 | Chạy hai lần, đọc case và trace, xác định lỗi, giải thích bằng evidence và nêu giới hạn của điểm judge. | `eval_before.json`, `eval_after.json`, `NOTES.md` | Điểm tổng `null`; không dẫn trace; hai lần chạy khác cấu hình |
+| Cải tiến và trình bày | 20 | Có cải tiến phù hợp, validation nguồn, tests, so sánh kết quả và giải thích lỗi còn lại. | `agent.py`, `NOTES.md`, buổi demo | Sửa dataset, fixtures hay grading để case pass; không có so sánh trước sau |
+
+### Trừ điểm chung
+
+- Nộp muộn: bị trừ điểm theo [RULES.md](RULES.md).
+- Sai tên repo hoặc nộp sai link: bị trừ điểm.
+- Để lộ API key trong repo: bị trừ điểm, và phải thu hồi key ngay.
 
 Điểm eval và điểm bài lab là **hai thang đo khác nhau**; không tự động dùng điểm eval thay cho điểm lab.
 

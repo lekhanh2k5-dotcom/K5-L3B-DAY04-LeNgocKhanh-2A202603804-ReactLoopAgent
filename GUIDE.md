@@ -6,7 +6,7 @@ Toàn bộ các bước dưới đây thuộc bài lab. Giả định học viê
 
 | Thời gian | Hoạt động | Kết quả |
 |---|---|---|
-| 0–15 phút | Khám phá tools và dữ liệu | Hiểu hai tools và giới hạn dữ liệu. |
+| 0–15 phút | Setup và khám phá tools, dữ liệu | Hiểu hai tools và giới hạn dữ liệu. |
 | 15–70 phút | Bài 1: tự code agent loop | Model gọi tools và nhận lại kết quả. |
 | 70–95 phút | Bài 2: xử lý lỗi và trace | Có giới hạn bước, trace và lỗi được xử lý. |
 | 95–105 phút | Nghỉ | |
@@ -48,6 +48,7 @@ run_agent(question, provider, tools, max_steps=6) -> dict
 - Mỗi tool result gửi lại bằng `{'role': 'tool', 'tool_call_id': call_id, 'content': json_string}`. Xử lý **mọi** call trong response trước model call tiếp theo.
 - Khi `finish == 'stop'` và không còn calls, trả answer; `length` hoặc lý do dừng khác không được coi là hoàn thành.
 - Kết quả có tối thiểu `status` (`completed`, `max_steps`, `error`), `answer` (string), `trace` (list) và `usage` (list). Có thể thêm `error`.
+- Mỗi phần tử trong `trace` là dict có key `event`. Một tool call ghi đúng dạng `{'event': 'tool', 'step': n, 'name': ..., 'arguments': ..., 'result': ...}`, vì tests và phần chấm bằng code đọc các key này.
 
 `SCHEMAS` được import từ `status_tools`. Mỗi model call là một step, không phải mỗi tool call. Không yêu cầu model in chain-of-thought: trace chỉ cần step, finish, tool name, arguments và result. Đừng đưa key vào trace.
 
@@ -86,7 +87,7 @@ Chọn một case điểm thấp hoặc một lỗi thấy trong trace. Ghi lạ
 - **Nhiều bước và dữ liệu dài:** H1/H6. Agent có gọi tiếp khi thấy incident liên quan, bỏ qua dữ liệu nhiễu và nêu giới hạn khi output bị cắt không?
 - **Yêu cầu sai hoặc ngoài luồng:** H2/H3/H4/H8. Agent có sửa tiền đề sai, từ chối bịa link hoặc sử dụng tool không cần thiết không?
 
-Implement một thay đổi để giải quyết lỗi bạn đã chọn. Một ví dụ là kiểm tra URL nguồn trong `agent.py`: lưu URL từ `get_incident_details` thành công; nếu final answer không chứa URL incident đã quan sát, ghi event vào trace và yêu cầu model sửa trong `max_steps`. Không bắt URL nếu không có incident thành công. Đây chỉ là kiểm tra sự hiện diện một URL, không chứng minh tất cả claims đều có nguồn.
+Implement một thay đổi để giải quyết lỗi bạn đã chọn. Một ví dụ là kiểm tra URL nguồn trong `agent.py`: lưu URL từ `get_incident_details` thành công; nếu final answer không chứa URL incident đã quan sát, ghi event `validation_missing_source` vào trace và yêu cầu model sửa trong `max_steps`. Không bắt URL nếu không có incident thành công. Đây chỉ là kiểm tra sự hiện diện một URL, không chứng minh tất cả claims đều có nguồn.
 
 Chạy tests offline:
 
@@ -110,7 +111,7 @@ So sánh điểm tổng, từng case và trace; nêu lỗi đã giải quyết, 
 
 ## Nộp bài
 
-Nộp `agent.py`, `eval_before.json`, `eval_after.json` đã xóa thông tin nhạy cảm và ghi chú gồm: case được chọn, evidence trong trace, thay đổi, kết quả so sánh, giới hạn. Demo một trace nhiều bước và trình bày một lỗi agent.
+Nộp `agent.py`, `eval_before.json`, `eval_after.json` đã xóa thông tin nhạy cảm và `NOTES.md` gồm: case được chọn, evidence trong trace, thay đổi, kết quả so sánh, giới hạn. Demo một trace nhiều bước và trình bày một lỗi agent. Tên repo, nơi nộp và deadline ở [SUBMISSION.md](SUBMISSION.md).
 
 
 ## Thử thách bonus tùy chọn — 15 điểm

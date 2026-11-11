@@ -52,7 +52,7 @@ def main():
     if args.max_steps < 1 or not 1 <= args.workers <= 8:
         parser.error('--max-steps phải >= 1 và --workers phải từ 1 đến 8')
     cases_path = (Path(__file__).resolve().parents[1] / 'bonus' / 'cases.json') if args.bonus else (Path(__file__).parent / 'cases.json')
-    cases = json.loads(cases_path.read_text())
+    cases = json.loads(cases_path.read_text(encoding='utf-8'))
     selected = [c for c in cases if not args.case or c['id'] == args.case.upper()]
     if not selected:
         parser.error('Không tìm thấy case')
@@ -71,7 +71,7 @@ def main():
         full_run = not args.case and len(selected) == len(cases)
         report['summary']['bonus_points_0_15'] = bonus_points(summary['score_0_100'], full_run)
         print(f"Điểm bonus tham khảo: {summary['bonus_points_0_15']}/15 (chỉ tính khi chấm đủ toàn bộ case).")
-    Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+    Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(f"Điểm: {summary['score_0_100']}/100; đã chấm {summary['scored_cases']}/{summary['total_cases']} case. File: {args.output}")
     if summary['score_0_100'] is None:
         print('Chưa có điểm tổng do có case chưa được chấm; xem reason trong file.', file=sys.stderr)

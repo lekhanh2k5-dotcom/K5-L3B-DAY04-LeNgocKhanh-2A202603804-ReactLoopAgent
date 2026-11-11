@@ -35,7 +35,7 @@ class StatusTools:
         if provider in self.cache:
             return self.cache[provider]
         if self.mode == 'snapshot':
-            data = json.loads((ROOT / 'fixtures' / f'{provider}.json').read_text())
+            data = json.loads((ROOT / 'fixtures' / f'{provider}.json').read_text(encoding='utf-8'))
         else:
             data = {'captured_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'source': HOSTS[provider], 'data': {}}
             for endpoint in ('summary', 'incidents'):
