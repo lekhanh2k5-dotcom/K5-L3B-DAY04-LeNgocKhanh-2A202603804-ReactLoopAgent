@@ -1,7 +1,7 @@
 # Ghi chú phân tích · Day 04
 
-Họ và tên:
-MSSV:
+Họ và tên: Le Ngoc Khanh
+MSSV: 2A202603804
 
 Cấu hình cả hai lần chạy: agent và judge đều là `openai/gpt-oss-120b` qua OpenRouter, snapshot 09/11/2026, `max_steps` 8, dataset core 22 case (khối `config` trong hai file giống nhau). Phân tích đầy đủ hơn (các vòng cải tiến sau, chạy lặp, judge thứ hai, bonus) ở [BAOCAO.md](BAOCAO.md).
 
