@@ -10,7 +10,7 @@
 | `max_steps` | 8 (mặc định của eval runner), `--workers 4` |
 | Hai lần chạy | cùng model, judge, snapshot, max_steps, dataset |
 
-Thay đổi hạ tầng (không phải agent): thêm provider `groq` và header `User-Agent` vào `providers.py`, đồng thời retry HTTP 429 theo `Retry-After`. Trên Windows cần đặt `PYTHONUTF8=1` để đọc được fixture.
+Thay đổi hạ tầng (không phải agent): thêm provider `groq` và header `User-Agent` vào `providers.py`, đồng thời retry HTTP 429 theo `Retry-After`. Trước bản cập nhật quy chuẩn K5 của lớp, trên Windows cần đặt `PYTHONUTF8=1` để đọc được fixture; bản cập nhật đã thêm `encoding='utf-8'` nên không cần nữa. Ghi chú theo mẫu của lớp ở [NOTES.md](NOTES.md).
 
 ## Agent loop (Bài 1–2)
 
